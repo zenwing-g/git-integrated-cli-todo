@@ -1,0 +1,3 @@
+- [x] todo init func
+- [x] todo rm func
+- [x] todo add func
