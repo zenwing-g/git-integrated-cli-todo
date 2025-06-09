@@ -11,6 +11,29 @@ import (
 	"github.com/olekukonko/tablewriter"
 )
 
+var taskID int = 1
+
+func initTaskID() error {
+	tasks, err := readTasks()
+	if err != nil {
+		if os.IsNotExist(err) {
+			taskID = 1
+			return nil
+		}
+		return err
+	}
+
+	maxID := 0
+	for _, t := range tasks {
+		if t.TID > maxID {
+			maxID = t.TID
+		}
+	}
+
+	taskID = maxID + 1
+	return nil
+}
+
 // handleInit creates the sacred .todo.json file in your current folder.
 // This file is where your precious tasks will live.
 // If the file is already there, it won’t destroy your data or mess with it — promise.
@@ -68,7 +91,6 @@ func handleInit(args []string) {
 func createExampleTasks() []Task {
 	now := time.Now()
 	past := now.Add(-24 * time.Hour)
-	commitMsg := "Fixed some bugs"
 
 	// Possible boolean values for Important and CompletedOnAt presence
 	importants := []bool{false, true}
@@ -84,10 +106,10 @@ func createExampleTasks() []Task {
 
 			task := Task{
 				Name:          name,
+				TID:           taskID,
 				Description:   desc,
 				CreatedOnAt:   now,
 				CompletedOnAt: comp,
-				CommitMessage: commitMsg,
 				Important:     imp,
 			}
 			tasks = append(tasks, task)
@@ -95,13 +117,12 @@ func createExampleTasks() []Task {
 		}
 	}
 
-	// Add one extra task with empty commit message for variety
+	// Add one extra task for variety
 	tasks = append(tasks, Task{
 		Name:          fmt.Sprintf("Task%d", count),
-		Description:   "No commit message on this one",
+		Description:   "This one has no completion time",
 		CreatedOnAt:   now,
 		CompletedOnAt: nil,
-		CommitMessage: "",
 		Important:     false,
 	})
 
@@ -113,6 +134,8 @@ func createExampleTasks() []Task {
 // Any other failure, it’ll whine about it.
 func handleDelete() {
 	const fileName = ".todo.json"
+
+	taskID = 1
 
 	err := os.Remove(fileName)
 	if err != nil {
@@ -129,16 +152,16 @@ func handleDelete() {
 
 // Task represents a single todo item — basically your digital sticky note.
 // - Name is mandatory, because how else would you remember it?
-// - Description and CommitMessage are optional for those who like to write essays.
+// - Description is optional for those who like to write essays.
 // - CreatedOnAt timestamps when you added it (in case you procrastinate).
 // - CompletedOnAt timestamps when you stopped procrastinating, nil if you haven’t.
 // - Important flags it as “Hey, do this first!” or “No, seriously, do this now.”
 type Task struct {
 	Name          string     `json:"name"`
+	TID           int        `json:"taskid"`
 	Description   string     `json:"description"`
 	CreatedOnAt   time.Time  `json:"created_on_at"`
 	CompletedOnAt *time.Time `json:"completed_on_at,omitempty"`
-	CommitMessage string     `json:"commit_message,omitempty"`
 	Important     bool       `json:"important"`
 }
 
@@ -148,7 +171,6 @@ type Task struct {
 func handleAdd() {
 	reader := bufio.NewReader(os.Stdin)
 
-	// Keep asking until you give a non-empty name — no slacking off here.
 	var name string
 	for {
 		fmt.Print("Enter task name (required): ")
@@ -160,34 +182,25 @@ func handleAdd() {
 		fmt.Println("Task name can’t be empty. Try harder.")
 	}
 
-	// Optional description, because some tasks need a little storytelling.
 	fmt.Print("Enter task description (optional): ")
 	descInput, _ := reader.ReadString('\n')
 	desc := strings.TrimSpace(descInput)
 
-	// Optional commit message — for when your todo list moonlights as a version control log.
-	fmt.Print("Enter commit message (optional): ")
-	commitInput, _ := reader.ReadString('\n')
-	commitMsg := strings.TrimSpace(commitInput)
-
-	// Is this task important or just meh? Defaults to meh if you press enter.
 	fmt.Print("Is this task important(y/N(default)): ")
 	importantInput, _ := reader.ReadString('\n')
 	important := strings.ToLower(strings.TrimSpace(importantInput)) == "y"
 
 	now := time.Now()
 
-	// Build your task like a boss.
 	newTask := Task{
 		Name:          name,
+		TID:           taskID,
 		Description:   desc,
 		CreatedOnAt:   now,
-		CompletedOnAt: nil,       // Not done yet, don’t lie to yourself.
-		CommitMessage: commitMsg, // Optional bragging rights.
+		CompletedOnAt: nil,
 		Important:     important,
 	}
 
-	// Try to load existing tasks. If the file doesn’t exist, start fresh.
 	tasks, err := readTasks()
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -198,17 +211,14 @@ func handleAdd() {
 		}
 	}
 
-	// Append your new masterpiece.
 	tasks = append(tasks, newTask)
 
-	// Turn your tasks into JSON. Pretty-printed so humans won’t cry.
 	jsonData, err := json.MarshalIndent(tasks, "", "  ")
 	if err != nil {
 		fmt.Println("[-] JSON marshalling failed. What did you do?")
 		return
 	}
 
-	// Overwrite the file with the new list, because we don’t do partial saves here.
 	err = os.WriteFile(".todo.json", jsonData, 0644)
 	if err != nil {
 		fmt.Println("[-] Failed to save tasks. Maybe your disk hates you.")
@@ -242,7 +252,6 @@ func readTasks() ([]Task, error) {
 // --com   Only show completed tasks (because you love ticking boxes)
 // --uncom Only show incomplete tasks (because you’re avoiding work)
 // --imp   Only show important tasks (because you want to feel productive)
-//
 // Unknown flags will make it grumpy but won’t crash.
 func handleList(args []string) {
 	tasks, err := readTasks()
@@ -310,10 +319,11 @@ func handleList(args []string) {
 
 	// Show your tasks in a pretty table because plain lists are boring.
 	table := tablewriter.NewWriter(os.Stdout)
-	table.Header([]string{"Name", "Created", "Important"})
+	table.Header([]string{"#", "Name", "Created", "Important"})
 
 	for _, task := range filtered {
 		table.Append([]string{
+			fmt.Sprintf("%d", task.TID),
 			task.Name,
 			task.CreatedOnAt.Format("2006-01-02 15:04"),
 			fmt.Sprintf("%v", task.Important),
@@ -336,6 +346,11 @@ func main() {
 	case "rm":
 		handleDelete()
 	case "add":
+		err := initTaskID()
+		if err != nil {
+			fmt.Println("[-] Failed to initialize taskID:", err)
+			return
+		}
 		handleAdd()
 	case "ls":
 		handleList(os.Args[2:])
