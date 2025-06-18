@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 
@@ -16,8 +18,9 @@ type Task struct {
 	TID           int        `json:"taskid"`
 	Description   string     `json:"description"`
 	CreatedOnAt   time.Time  `json:"created_on_at"`
-	CompletedOnAt *time.Time `json:"completed_on_at,omitempty"`
+	CompletedOnAt *time.Time `json:"completed_on_at"`
 	Important     bool       `json:"important"`
+	CommandToRun  string     `json:"command_to_run"`
 }
 
 var TaskID int = 1
@@ -41,6 +44,8 @@ func main() {
 		handleAdd()
 	case "ls":
 		handleList(os.Args[2:])
+	case "done":
+		handleCompleted(os.Args[2:])
 	default:
 		fmt.Println("Unknown command:", os.Args[1])
 		fmt.Println("Try: todo [init|ls|add|done|rm]")
@@ -79,8 +84,8 @@ func handleInit(args []string) {
 
 func handleDelete() {
 	const fileName = ".todo.json"
-
 	TaskID = 1
+
 	err := os.Remove(fileName)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -115,6 +120,10 @@ func handleAdd() {
 	importantInput, _ := reader.ReadString('\n')
 	important := strings.ToLower(strings.TrimSpace(importantInput)) == "y"
 
+	fmt.Println("Git command to run on completion: ")
+	commandInput, _ := reader.ReadString('\n')
+	commandToRun := strings.TrimSpace(commandInput)
+
 	newTask := Task{
 		Name:          name,
 		TID:           TaskID,
@@ -122,6 +131,7 @@ func handleAdd() {
 		CreatedOnAt:   time.Now(),
 		CompletedOnAt: nil,
 		Important:     important,
+		CommandToRun:  commandToRun,
 	}
 
 	tasks, err := readTasks()
@@ -129,6 +139,7 @@ func handleAdd() {
 		fmt.Println("[-] Error reading tasks:", err)
 		return
 	}
+
 	tasks = append(tasks, newTask)
 
 	data, err := json.MarshalIndent(tasks, "", "  ")
@@ -143,6 +154,67 @@ func handleAdd() {
 	}
 
 	fmt.Println("[+] Task added:", newTask.Name)
+}
+
+func handleCompleted(args []string) {
+	if len(args) < 1 {
+		fmt.Println("[x] No task ID provided")
+		return
+	}
+
+	taskID, err := strconv.Atoi(args[0])
+	if err != nil {
+		fmt.Println("[-] Invalid task ID: ", err)
+		return
+	}
+
+	tasks, err := readTasks()
+	if err != nil {
+		fmt.Println("[-] Failed to read tasks:", err)
+		return
+	}
+
+	now := time.Now()
+	found := false
+
+	for i, t := range tasks {
+		if t.TID == taskID {
+			if t.CompletedOnAt != nil {
+				fmt.Println("[!] Task already completed.")
+				return
+			}
+			tasks[i].CompletedOnAt = &now
+			found = true
+
+			if cmd := strings.TrimSpace(t.CommandToRun); cmd != "" {
+				fmt.Println("[*] Running command:", cmd)
+				out, err := exec.Command("sh", "-c", cmd).CombinedOutput()
+				if err != nil {
+					fmt.Println("[-] Command failed:", err)
+				}
+				fmt.Println(string(out))
+			}
+			break
+		}
+	}
+
+	if !found {
+		fmt.Println("[-] Task ID not found.")
+		return
+	}
+
+	data, err := json.MarshalIndent(tasks, "", "  ")
+	if err != nil {
+		fmt.Println("[-] Failed to encode tasks:", err)
+		return
+	}
+
+	if err := os.WriteFile(".todo.json", data, 0644); err != nil {
+		fmt.Println("[-] Failed to write tasks:", err)
+		return
+	}
+
+	fmt.Println("[+] Task marked as completed.")
 }
 
 func handleList(args []string) {
