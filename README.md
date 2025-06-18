@@ -1,4 +1,4 @@
-# git-aware-todo-cli
+# git-integrated-todo-cli
 
 A minimal terminal-based todo app that stores tasks in a JSON file and optionally runs Git commands when tasks are completed.
 
@@ -36,4 +36,3 @@ todo done <task_id>
 # Delete the todo list
 todo rm
 ```
-
