@@ -26,51 +26,61 @@ type Task struct {
 var TaskID int = 1
 
 func main() {
+	fmt.Println("[*] Starting todo CLI...")
+
 	if len(os.Args) < 2 {
-		fmt.Println("Usage:\ntodo [init|ls|add|done|rm]")
+		fmt.Println("[*] Usage:\ntodo [init|ls|add|done|rm]")
 		return
 	}
 
 	switch os.Args[1] {
 	case "init":
+		fmt.Println("[*] Running 'init' command")
 		handleInit(os.Args[2:])
 	case "rm":
+		fmt.Println("[*] Running 'rm' command")
 		handleDelete()
 	case "add":
+		fmt.Println("[*] Running 'add' command")
 		if err := initTaskID(); err != nil {
-			fmt.Println("[-] Failed to initialize taskID:", err)
+			fmt.Println("[x] Failed to initialize taskID:", err)
 			return
 		}
 		handleAdd()
 	case "ls":
+		fmt.Println("[*] Running 'ls' command")
 		handleList(os.Args[2:])
 	case "done":
+		fmt.Println("[*] Running 'done' command")
 		handleCompleted(os.Args[2:])
 	default:
-		fmt.Println("Unknown command:", os.Args[1])
+		fmt.Println("[x] Unknown command:", os.Args[1])
 		fmt.Println("Try: todo [init|ls|add|done|rm]")
 	}
 }
 
 func handleInit(args []string) {
 	const fileName = ".todo.json"
+	fmt.Println("[*] Starting 'todo init'...")
 
 	if _, err := os.Stat(fileName); err == nil {
 		fmt.Println("[!] .todo.json already exists.")
 		return
 	} else if !os.IsNotExist(err) {
-		fmt.Println("[-] Error checking file:", err)
+		fmt.Println("[x] Error checking file:", err)
 		return
 	}
 
+	fmt.Println("[*] Creating .todo.json file...")
 	file, err := os.Create(fileName)
 	if err != nil {
-		fmt.Println("[-] Failed to create file:", err)
+		fmt.Println("[x] Failed to create file:", err)
 		return
 	}
 	defer file.Close()
 
 	if len(args) > 0 && args[0] == "--example" {
+		fmt.Println("[*] Writing example tasks...")
 		tasks := createExampleTasks()
 		jsonData, _ := json.MarshalIndent(tasks, "", "  ")
 		file.Write(jsonData)
@@ -78,20 +88,66 @@ func handleInit(args []string) {
 		return
 	}
 
-	file.WriteString("[]")
+	isRepo := checkRepo()
+	fmt.Println("[*] Git repo check:", isRepo)
+
+	if !isRepo {
+		fmt.Println("[!] Not a Git repo. Skipping .gitignore.")
+	} else {
+		fmt.Println("[*] Git repo found. Checking .gitignore...")
+		if checkGitignore() {
+			fmt.Println("[*] .gitignore exists. Appending entry if missing...")
+			content, err := os.ReadFile(".gitignore")
+			if err != nil {
+				fmt.Println("[x] Failed to read .gitignore:", err)
+				return
+			}
+
+			if !strings.Contains(string(content), ".todo.json") {
+				fmt.Println("[*] Appending .todo.json to .gitignore...")
+				f, err := os.OpenFile(".gitignore", os.O_APPEND|os.O_WRONLY, 0644)
+				if err != nil {
+					fmt.Println("[-] Error opening .gitignore:", err)
+					return
+				}
+				defer f.Close()
+
+				_, err = f.WriteString(".todo.json\n")
+				if err != nil {
+					fmt.Println("[x] Error writing to .gitignore:", err)
+					return
+				}
+			}
+		} else {
+			fmt.Println("[*] .gitignore not found. Creating it...")
+			err := os.WriteFile(".gitignore", []byte("# Created by todo.cli\n.todo.json\n"), 0644)
+			if err != nil {
+				fmt.Println("[x] Error creating .gitignore:", err)
+				return
+			}
+			fmt.Println("[+] .gitignore created.")
+		}
+	}
+
+	_, err = file.WriteString("[]")
+	if err != nil {
+		fmt.Println("[x] Failed to write empty JSON array:", err)
+		return
+	}
 	fmt.Println("[+] Empty todo list initialized.")
 }
 
 func handleDelete() {
 	const fileName = ".todo.json"
 	TaskID = 1
+	fmt.Println("[*] Deleting .todo.json...")
 
 	err := os.Remove(fileName)
 	if err != nil {
 		if os.IsNotExist(err) {
 			fmt.Println("[!] File does not exist.")
 		} else {
-			fmt.Println("[-] Could not delete file:", err)
+			fmt.Println("[x] Could not delete file:", err)
 		}
 		return
 	}
@@ -100,6 +156,7 @@ func handleDelete() {
 }
 
 func handleAdd() {
+	fmt.Println("[*] Adding new task...")
 	reader := bufio.NewReader(os.Stdin)
 
 	var name string
@@ -136,7 +193,7 @@ func handleAdd() {
 
 	tasks, err := readTasks()
 	if err != nil && !os.IsNotExist(err) {
-		fmt.Println("[-] Error reading tasks:", err)
+		fmt.Println("[x] Error reading tasks:", err)
 		return
 	}
 
@@ -144,12 +201,12 @@ func handleAdd() {
 
 	data, err := json.MarshalIndent(tasks, "", "  ")
 	if err != nil {
-		fmt.Println("[-] JSON error:", err)
+		fmt.Println("[x] JSON error:", err)
 		return
 	}
 
 	if err := os.WriteFile(".todo.json", data, 0644); err != nil {
-		fmt.Println("[-] Failed to write file:", err)
+		fmt.Println("[x] Failed to write file:", err)
 		return
 	}
 
@@ -157,6 +214,7 @@ func handleAdd() {
 }
 
 func handleCompleted(args []string) {
+	fmt.Println("[*] Completing task...")
 	if len(args) < 1 {
 		fmt.Println("[x] No task ID provided")
 		return
@@ -164,13 +222,13 @@ func handleCompleted(args []string) {
 
 	taskID, err := strconv.Atoi(args[0])
 	if err != nil {
-		fmt.Println("[-] Invalid task ID: ", err)
+		fmt.Println("[x] Invalid task ID: ", err)
 		return
 	}
 
 	tasks, err := readTasks()
 	if err != nil {
-		fmt.Println("[-] Failed to read tasks:", err)
+		fmt.Println("[x] Failed to read tasks:", err)
 		return
 	}
 
@@ -190,7 +248,7 @@ func handleCompleted(args []string) {
 				fmt.Println("[*] Running command:", cmd)
 				out, err := exec.Command("sh", "-c", cmd).CombinedOutput()
 				if err != nil {
-					fmt.Println("[-] Command failed:", err)
+					fmt.Println("[x] Command failed:", err)
 				}
 				fmt.Println(string(out))
 			}
@@ -205,12 +263,12 @@ func handleCompleted(args []string) {
 
 	data, err := json.MarshalIndent(tasks, "", "  ")
 	if err != nil {
-		fmt.Println("[-] Failed to encode tasks:", err)
+		fmt.Println("[x] Failed to encode tasks:", err)
 		return
 	}
 
 	if err := os.WriteFile(".todo.json", data, 0644); err != nil {
-		fmt.Println("[-] Failed to write tasks:", err)
+		fmt.Println("[x] Failed to write tasks:", err)
 		return
 	}
 
@@ -218,13 +276,15 @@ func handleCompleted(args []string) {
 }
 
 func handleList(args []string) {
+	fmt.Println("[*] Listing tasks...")
+
 	tasks, err := readTasks()
 	if err != nil {
 		if os.IsNotExist(err) {
 			fmt.Println("File not found. Run 'todo init'.")
 			return
 		}
-		fmt.Println("[-] Failed to read tasks:", err)
+		fmt.Println("[x] Failed to read tasks:", err)
 		return
 	}
 
@@ -289,7 +349,24 @@ func handleList(args []string) {
 	table.Render()
 }
 
+func checkRepo() bool {
+	info, err := os.Stat(".git")
+	if err != nil {
+		return false
+	}
+	return info.IsDir()
+}
+
+func checkGitignore() bool {
+	_, err := os.Stat(".gitignore")
+	if err != nil {
+		return false
+	}
+	return true
+}
+
 func readTasks() ([]Task, error) {
+	fmt.Println("[*] Reading tasks from .todo.json")
 	data, err := os.ReadFile(".todo.json")
 	if err != nil {
 		return nil, err
@@ -304,6 +381,7 @@ func readTasks() ([]Task, error) {
 }
 
 func initTaskID() error {
+	fmt.Println("[*] Initializing Task ID")
 	tasks, err := readTasks()
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -320,10 +398,12 @@ func initTaskID() error {
 		}
 	}
 	TaskID = maxID + 1
+	fmt.Println("[*] Task ID set to", TaskID)
 	return nil
 }
 
 func createExampleTasks() []Task {
+	fmt.Println("[*] Creating example tasks...")
 	now := time.Now()
 	past := now.Add(-24 * time.Hour)
 
