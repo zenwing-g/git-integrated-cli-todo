@@ -13,45 +13,45 @@ import (
 	"github.com/olekukonko/tablewriter"
 )
 
+// Task defines the structure of a single todo item
 type Task struct {
 	Name          string     `json:"name"`
-	TID           int        `json:"taskid"`
-	Description   string     `json:"description"`
-	CreatedOnAt   time.Time  `json:"created_on_at"`
-	CompletedOnAt *time.Time `json:"completed_on_at"`
-	Important     bool       `json:"important"`
-	CommandToRun  string     `json:"command_to_run"`
+	TID           int        `json:"taskid"`          // unique Task ID
+	Description   string     `json:"description"`     // optional task details
+	CreatedOnAt   time.Time  `json:"created_on_at"`   // timestamp of creation
+	CompletedOnAt *time.Time `json:"completed_on_at"` // nil if not done
+	Important     bool       `json:"important"`       // priority flag
+	CommandToRun  string     `json:"command_to_run"`  // optional command to run when marked done
 }
 
+// Global counter for new task ID generation
 var TaskID int = 1
 
 func main() {
 	fmt.Println("[*] Starting todo CLI...")
 
+	// Ensure at least one CLI arg exists
 	if len(os.Args) < 2 {
 		fmt.Println("[*] Usage:\ntodo [init|ls|add|done|rm]")
 		return
 	}
 
+	// Handle commands based on first argument
 	switch os.Args[1] {
 	case "init":
-		fmt.Println("[*] Running 'init' command")
 		handleInit(os.Args[2:])
 	case "rm":
-		fmt.Println("[*] Running 'rm' command")
 		handleDelete()
 	case "add":
-		fmt.Println("[*] Running 'add' command")
+		// Ensure TaskID starts from correct number
 		if err := initTaskID(); err != nil {
 			fmt.Println("[x] Failed to initialize taskID:", err)
 			return
 		}
 		handleAdd()
 	case "ls":
-		fmt.Println("[*] Running 'ls' command")
 		handleList(os.Args[2:])
 	case "done":
-		fmt.Println("[*] Running 'done' command")
 		handleCompleted(os.Args[2:])
 	default:
 		fmt.Println("[x] Unknown command:", os.Args[1])
@@ -59,88 +59,88 @@ func main() {
 	}
 }
 
+// Initializes the .todo directory, JSON file, and optionally example tasks
 func handleInit(args []string) {
-	const fileName = ".todo.json"
-	fmt.Println("[*] Starting 'todo init'...")
+	const dir = ".todo"
+	const filePath = ".todo/.todo.json"
 
-	if _, err := os.Stat(fileName); err == nil {
-		fmt.Println("[!] .todo.json already exists.")
+	// Check if already initialized
+	if _, err := os.Stat(dir); err == nil {
+		fmt.Println("[!] .todo already exists.")
 		return
 	} else if !os.IsNotExist(err) {
-		fmt.Println("[x] Error checking file:", err)
+		fmt.Println("[x] Error checking .todo:", err)
 		return
 	}
 
-	fmt.Println("[*] Creating .todo.json file...")
-	file, err := os.Create(fileName)
+	// Create .todo directory
+	if err := os.Mkdir(dir, 0755); err != nil {
+		fmt.Println("[x] Failed to create .todo:", err)
+		return
+	}
+	fmt.Println("[+] Created .todo")
+
+	// Create JSON file
+	file, err := os.Create(filePath)
 	if err != nil {
-		fmt.Println("[x] Failed to create file:", err)
+		fmt.Println("[x] Failed to create .todo.json:", err)
 		return
 	}
 	defer file.Close()
 
+	// If "--example" is passed, write sample tasks
 	if len(args) > 0 && args[0] == "--example" {
-		fmt.Println("[*] Writing example tasks...")
 		tasks := createExampleTasks()
 		jsonData, _ := json.MarshalIndent(tasks, "", "  ")
 		file.Write(jsonData)
 		fmt.Println("[+] Example todo list created.")
-		return
-	}
-
-	isRepo := checkRepo()
-	fmt.Println("[*] Git repo check:", isRepo)
-
-	if !isRepo {
-		fmt.Println("[!] Not a Git repo. Skipping .gitignore.")
 	} else {
-		fmt.Println("[*] Git repo found. Checking .gitignore...")
-		if checkGitignore() {
-			fmt.Println("[*] .gitignore exists. Appending entry if missing...")
-			content, err := os.ReadFile(".gitignore")
-			if err != nil {
-				fmt.Println("[x] Failed to read .gitignore:", err)
-				return
-			}
-
-			if !strings.Contains(string(content), ".todo.json") {
-				fmt.Println("[*] Appending .todo.json to .gitignore...")
-				f, err := os.OpenFile(".gitignore", os.O_APPEND|os.O_WRONLY, 0644)
-				if err != nil {
-					fmt.Println("[-] Error opening .gitignore:", err)
-					return
-				}
-				defer f.Close()
-
-				_, err = f.WriteString(".todo.json\n")
-				if err != nil {
-					fmt.Println("[x] Error writing to .gitignore:", err)
-					return
-				}
-			}
-		} else {
-			fmt.Println("[*] .gitignore not found. Creating it...")
-			err := os.WriteFile(".gitignore", []byte("# Created by todo.cli\n.todo.json\n"), 0644)
-			if err != nil {
-				fmt.Println("[x] Error creating .gitignore:", err)
-				return
-			}
-			fmt.Println("[+] .gitignore created.")
+		// Else, just write an empty array
+		_, err = file.WriteString("[]")
+		if err != nil {
+			fmt.Println("[x] Failed to write empty JSON array:", err)
+			return
 		}
+		fmt.Println("[+] Empty todo list initialized.")
 	}
 
-	_, err = file.WriteString("[]")
-	if err != nil {
-		fmt.Println("[x] Failed to write empty JSON array:", err)
+	// Git-aware setup for ignoring .todo.json in commits
+	if !checkRepo() {
+		fmt.Println("[!] Not a Git repo. Skipping .gitignore.")
 		return
 	}
-	fmt.Println("[+] Empty todo list initialized.")
+
+	// If .gitignore exists, append entry only if missing
+	if checkGitignore() {
+		content, err := os.ReadFile(".gitignore")
+		if err != nil {
+			fmt.Println("[x] Failed to read .gitignore:", err)
+			return
+		}
+		if !strings.Contains(string(content), ".todo.json") {
+			f, err := os.OpenFile(".gitignore", os.O_APPEND|os.O_WRONLY, 0644)
+			if err != nil {
+				fmt.Println("[-] Error opening .gitignore:", err)
+				return
+			}
+			defer f.Close()
+			f.WriteString(".todo.json\n")
+		}
+	} else {
+		// Create new .gitignore if missing
+		err := os.WriteFile(".gitignore", []byte("# Created by todo.cli\n.todo.json\n"), 0644)
+		if err != nil {
+			fmt.Println("[x] Error creating .gitignore:", err)
+			return
+		}
+		fmt.Println("[+] .gitignore created.")
+	}
 }
 
+// Deletes the .todo.json file and resets TaskID
 func handleDelete() {
 	const fileName = ".todo.json"
 	TaskID = 1
-	fmt.Println("[*] Deleting .todo.json...")
 
 	err := os.Remove(fileName)
 	if err != nil {
@@ -151,14 +151,14 @@ func handleDelete() {
 		}
 		return
 	}
-
 	fmt.Println("[+] .todo.json deleted.")
 }
 
+// Adds a new task via user input and saves to file
 func handleAdd() {
-	fmt.Println("[*] Adding new task...")
 	reader := bufio.NewReader(os.Stdin)
 
+	// Task name is mandatory
 	var name string
 	for {
 		fmt.Print("Enter task name (required): ")
@@ -170,17 +170,21 @@ func handleAdd() {
 		fmt.Println("Task name can't be empty.")
 	}
 
+	// Optional description
 	fmt.Print("Enter task description (optional): ")
 	desc, _ := reader.ReadString('\n')
 
+	// Important flag
 	fmt.Print("Is this task important (y/N)? ")
 	importantInput, _ := reader.ReadString('\n')
 	important := strings.ToLower(strings.TrimSpace(importantInput)) == "y"
 
+	// Optional git command to run on completion
 	fmt.Println("Git command to run on completion: ")
 	commandInput, _ := reader.ReadString('\n')
 	commandToRun := strings.TrimSpace(commandInput)
 
+	// Create new task struct
 	newTask := Task{
 		Name:          name,
 		TID:           TaskID,
@@ -191,20 +195,20 @@ func handleAdd() {
 		CommandToRun:  commandToRun,
 	}
 
+	// Read current tasks, append new task
 	tasks, err := readTasks()
 	if err != nil && !os.IsNotExist(err) {
 		fmt.Println("[x] Error reading tasks:", err)
 		return
 	}
-
 	tasks = append(tasks, newTask)
 
+	// Write updated tasks back to JSON
 	data, err := json.MarshalIndent(tasks, "", "  ")
 	if err != nil {
 		fmt.Println("[x] JSON error:", err)
 		return
 	}
-
 	if err := os.WriteFile(".todo.json", data, 0644); err != nil {
 		fmt.Println("[x] Failed to write file:", err)
 		return
@@ -213,8 +217,8 @@ func handleAdd() {
 	fmt.Println("[+] Task added:", newTask.Name)
 }
 
+// Marks task as completed, optionally executes a shell command
 func handleCompleted(args []string) {
-	fmt.Println("[*] Completing task...")
 	if len(args) < 1 {
 		fmt.Println("[x] No task ID provided")
 		return
@@ -235,6 +239,7 @@ func handleCompleted(args []string) {
 	now := time.Now()
 	found := false
 
+	// Look for the task with matching ID
 	for i, t := range tasks {
 		if t.TID == taskID {
 			if t.CompletedOnAt != nil {
@@ -244,6 +249,7 @@ func handleCompleted(args []string) {
 			tasks[i].CompletedOnAt = &now
 			found = true
 
+			// Execute post-completion command if available
 			if cmd := strings.TrimSpace(t.CommandToRun); cmd != "" {
 				fmt.Println("[*] Running command:", cmd)
 				out, err := exec.Command("sh", "-c", cmd).CombinedOutput()
@@ -261,12 +267,12 @@ func handleCompleted(args []string) {
 		return
 	}
 
+	// Save updated task list
 	data, err := json.MarshalIndent(tasks, "", "  ")
 	if err != nil {
 		fmt.Println("[x] Failed to encode tasks:", err)
 		return
 	}
-
 	if err := os.WriteFile(".todo.json", data, 0644); err != nil {
 		fmt.Println("[x] Failed to write tasks:", err)
 		return
@@ -275,9 +281,8 @@ func handleCompleted(args []string) {
 	fmt.Println("[+] Task marked as completed.")
 }
 
+// Lists tasks with optional filters: --com, --uncom, --imp
 func handleList(args []string) {
-	fmt.Println("[*] Listing tasks...")
-
 	tasks, err := readTasks()
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -288,10 +293,8 @@ func handleList(args []string) {
 		return
 	}
 
-	var (
-		showCompleted, showUncompleted, filterImportant bool
-	)
-
+	// Parse flags
+	var showCompleted, showUncompleted, filterImportant bool
 	for _, arg := range args {
 		switch arg {
 		case "--com":
@@ -305,8 +308,8 @@ func handleList(args []string) {
 		}
 	}
 
+	// Apply filters
 	var filtered []Task
-
 	if showCompleted || showUncompleted {
 		for _, t := range tasks {
 			if showCompleted && t.CompletedOnAt != nil {
@@ -335,6 +338,7 @@ func handleList(args []string) {
 		return
 	}
 
+	// Display as table
 	table := tablewriter.NewWriter(os.Stdout)
 	table.Header([]string{"#", "Name", "Created", "Important"})
 
@@ -349,24 +353,20 @@ func handleList(args []string) {
 	table.Render()
 }
 
+// Checks if current dir is a Git repo
 func checkRepo() bool {
 	info, err := os.Stat(".git")
-	if err != nil {
-		return false
-	}
-	return info.IsDir()
+	return err == nil && info.IsDir()
 }
 
+// Returns true if .gitignore file exists
 func checkGitignore() bool {
 	_, err := os.Stat(".gitignore")
-	if err != nil {
-		return false
-	}
-	return true
+	return err == nil
 }
 
+// Reads task list from JSON file
 func readTasks() ([]Task, error) {
-	fmt.Println("[*] Reading tasks from .todo.json")
 	data, err := os.ReadFile(".todo.json")
 	if err != nil {
 		return nil, err
@@ -376,12 +376,11 @@ func readTasks() ([]Task, error) {
 	if err := json.Unmarshal(data, &tasks); err != nil {
 		return nil, err
 	}
-
 	return tasks, nil
 }
 
+// Initializes TaskID by scanning max existing ID
 func initTaskID() error {
-	fmt.Println("[*] Initializing Task ID")
 	tasks, err := readTasks()
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -398,12 +397,11 @@ func initTaskID() error {
 		}
 	}
 	TaskID = maxID + 1
-	fmt.Println("[*] Task ID set to", TaskID)
 	return nil
 }
 
+// Generates sample tasks for --example use case
 func createExampleTasks() []Task {
-	fmt.Println("[*] Creating example tasks...")
 	now := time.Now()
 	past := now.Add(-24 * time.Hour)
 
@@ -427,6 +425,7 @@ func createExampleTasks() []Task {
 		}
 	}
 
+	// Add one task without a completion date
 	tasks = append(tasks, Task{
 		Name:        "BonusTask",
 		Description: "This one has no completion time",
