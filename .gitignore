@@ -1,3 +1,4 @@
 # Created by todo.cli
 .todo/
 todo
+.todo.json
