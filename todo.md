@@ -1,0 +1,29 @@
+- [x] **Add task**: `todo add "message"`
+- [x] **List tasks**: `todo list`, `todo list --filter tag`, etc.
+- [x] **Mark task done**: `todo done <id>`
+- [ ] **Delete task**: `todo rm <id>`
+- [x] **Task storage**: JSON file (e.g., `.todo.json`)
+- [ ] **Git sync**:
+  - [x] Auto `git add` after each change
+  - [ ] Show git history of tasks
+- [x] **Project scoped**: store `.todo.json` in current Git repo by default
+- [ ] **Branch-aware task context**: auto-switch todo files per Git branch
+- [ ] **Commit-hook closure**: auto-close tasks when commit messages say `fix #12` or `done: Clean up API`
+- [ ] **Diff-aware reminders**: "You edited X but didn't finish task Y" on commit
+- [ ] **Undo support** via Git history (checkout previous version of `.todo.json`)
+- [ ] **Fuzzy search (`fzf`) integration**: e.g., `todo search` opens task picker
+- [ ] **Filters**: by tag, priority, date, or status
+- [ ] **Colorized output** for status, tags, and priority
+- [ ] **Shell autocompletion** for Bash, Zsh, Fish
+- [ ] **Interactive mode** (optional): `todo --tui` or `todo --pick`
+- [ ] **Sync across repos**: central mode for global tasks (via symlinks or `$HOME/.todo/`) (mbwsl)
+- [ ] **Git log = changelog** for your tasks
+- [ ] **Git tags or branches = task milestones**
+- [ ] **Pre-push hook**: block push if high-priority tasks aren't done (toggleable)
+- [ ] **Commit template**: inject pending todos into commit message body (mbwsl)
+- [ ] **Neovim plugin** (inline TODO status + commands)
+- [ ] **Time tracking** per task
+- [ ] **Export to markdown**, calendar, etc. (mbwsl)
+- [ ] **Unit tests for core ops**
+- [ ] **Proper CLI help**: `--help`, `--version`
+- [ ] **Config file support**: `.todorc` or env vars (mbwsl)
