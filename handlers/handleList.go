@@ -3,10 +3,9 @@ package handlers
 import (
 	"fmt"
 	"os"
+	"strings"
 	"todo/constants"
 	"todo/utils"
-
-	"github.com/olekukonko/tablewriter"
 )
 
 func HandleList(args []string) {
@@ -63,17 +62,76 @@ func HandleList(args []string) {
 		return
 	}
 
-	// print as table
-	table := tablewriter.NewWriter(os.Stdout)
-	table.Header([]string{"ID", "Name", "Created", "Important"})
+	// Add "Status" column
+	headers := []string{"ID", "Name", "Created", "Important", "Status"}
+
+	// Calculate column widths
+	colWidths := make([]int, len(headers))
+	for i, h := range headers {
+		colWidths[i] = len(h)
+	}
 
 	for _, task := range filtered {
-		table.Append([]string{
+		if len(task.TID) > colWidths[0] {
+			colWidths[0] = len(task.TID)
+		}
+		if len(task.Name) > colWidths[1] {
+			colWidths[1] = len(task.Name)
+		}
+		created := task.CreatedOnAt.Format("2006-01-02 15:04")
+		if len(created) > colWidths[2] {
+			colWidths[2] = len(created)
+		}
+		imp := fmt.Sprintf("%v", task.Important)
+		if len(imp) > colWidths[3] {
+			colWidths[3] = len(imp)
+		}
+		status := "Pending"
+		if task.CompletedOnAt != nil {
+			status = "Done"
+		}
+		if len(status) > colWidths[4] {
+			colWidths[4] = len(status)
+		}
+	}
+
+	// Helper: build horizontal border
+	buildBorder := func() string {
+		parts := []string{"+"}
+		for _, w := range colWidths {
+			parts = append(parts, strings.Repeat("-", w+2), "+")
+		}
+		return strings.Join(parts, "")
+	}
+
+	// Helper: build row
+	buildRow := func(cols []string) string {
+		parts := []string{"|"}
+		for i, col := range cols {
+			padding := colWidths[i] - len(col)
+			parts = append(parts, " "+col+strings.Repeat(" ", padding+1), "|")
+		}
+		return strings.Join(parts, "")
+	}
+
+	// Print table
+	fmt.Println(buildBorder())
+	fmt.Println(buildRow(headers))
+	fmt.Println(buildBorder())
+
+	for _, task := range filtered {
+		status := "Pending"
+		if task.CompletedOnAt != nil {
+			status = "Done"
+		}
+		row := []string{
 			task.TID,
 			task.Name,
 			task.CreatedOnAt.Format("2006-01-02 15:04"),
 			fmt.Sprintf("%v", task.Important),
-		})
+			status,
+		}
+		fmt.Println(buildRow(row))
 	}
-	table.Render()
+	fmt.Println(buildBorder())
 }
